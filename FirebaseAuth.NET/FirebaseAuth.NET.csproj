@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <PackageId>FirebaseAuth.NET</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Imre Szuecs</Authors>
+    <Company></Company>
+    <Description>Cross-platform Firebase Auth service for .NET (MAUI, Blazor, Console, etc.)</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/szucsim/FirebaseAuth.NET</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/szucsim/FirebaseAuth.NET</PackageProjectUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>firebase;auth;dotnet;maui;net9</PackageTags>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.10" />
+    <PackageReference Include="Polly" Version="8.6.4" />
+  </ItemGroup>
+
+</Project>
