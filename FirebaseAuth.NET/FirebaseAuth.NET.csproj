@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
 
     <PackageId>FirebaseAuth.NET</PackageId>
-    <Version>1.0.1</Version>
+    <Version>1.1.0</Version>
     <Authors>Imre Szücs</Authors>
     <Company></Company>
     <Description>Cross-platform Firebase Auth service for .NET (MAUI, Blazor, Console, etc.). Supports login, registration, password reset, auto token refresh, and unregister (account deletion).</Description>
