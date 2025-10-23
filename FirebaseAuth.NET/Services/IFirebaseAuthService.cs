@@ -6,6 +6,7 @@
         Task<FirebaseUser?> RegisterAsync(string email, string password, CancellationToken ct = default);
         Task<FirebaseUser?> GetCurrentUserAsync(CancellationToken ct = default);
         Task<bool> SendPasswordResetEmailAsync(string email, CancellationToken ct = default);
+        Task<bool> UnregisterAsync(CancellationToken ct = default);
         void Logout();
     }
 }

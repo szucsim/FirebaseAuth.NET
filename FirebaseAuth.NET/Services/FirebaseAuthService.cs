@@ -13,26 +13,39 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
     private readonly ILogger<FirebaseAuthService> _logger;
     private readonly ISecureStorage _storage;
     private readonly string _apiKey;
+    private readonly FirebaseAuthOptions _options;
 
     private const string BaseUrl = "https://identitytoolkit.googleapis.com/v1";
     private const string RefreshUrl = "https://securetoken.googleapis.com/v1/token";
     private const string StoredUserKey = "firebase_user";
 
-    private readonly AsyncRetryPolicy<HttpResponseMessage> _retryPolicy = Policy
-        .HandleResult<HttpResponseMessage>(r => !r.IsSuccessStatusCode)
-        .WaitAndRetryAsync(
-            3,
-            attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
-            (outcome, delay, attempt, _) =>
-                Console.WriteLine($"[FirebaseAuthService] Retrying request (attempt {attempt}) after {delay.TotalSeconds}s")
-        );
+    private readonly AsyncRetryPolicy<HttpResponseMessage> _retryPolicy;
 
+    // Backward-compatible constructor (registration allowed by default)
     public FirebaseAuthService(HttpClient http, ILogger<FirebaseAuthService> logger, ISecureStorage storage, string apiKey)
+        : this(http, logger, storage, apiKey, new FirebaseAuthOptions())
+    { }
+
+    public FirebaseAuthService(HttpClient http, ILogger<FirebaseAuthService> logger, ISecureStorage storage, string apiKey, FirebaseAuthOptions options)
     {
         _http = http;
         _logger = logger;
         _storage = storage;
         _apiKey = apiKey;
+        _options = options ?? new FirebaseAuthOptions();
+
+        _retryPolicy = Policy
+            .HandleResult<HttpResponseMessage>(r => !r.IsSuccessStatusCode)
+            .WaitAndRetryAsync(
+                3,
+                attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
+                (outcome, delay, attempt, _) =>
+                    _logger.LogDebug(
+                        "Retrying HTTP request (attempt {Attempt}) after {DelaySeconds}s. Status: {StatusCode}",
+                        attempt,
+                        delay.TotalSeconds,
+                        outcome.Result?.StatusCode)
+            );
     }
 
     public async Task<FirebaseUser?> LoginAsync(string email, string password, CancellationToken ct = default)
@@ -67,6 +80,12 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
     {
         try
         {
+            if (!_options.AllowRegistration)
+            {
+                _logger.LogInformation("Registration is disabled. Skipping RegisterAsync for {Email}", email);
+                return null;
+            }
+
             var payload = new { email, password, returnSecureToken = true };
             var response = await _retryPolicy.ExecuteAsync(() =>
                 _http.PostAsJsonAsync($"{BaseUrl}/accounts:signUp?key={_apiKey}", payload, ct));
@@ -139,6 +158,38 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error sending password reset email for {Email}", email);
+            return false;
+        }
+    }
+
+    public async Task<bool> UnregisterAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var current = await GetCurrentUserAsync(ct);
+            if (current == null || string.IsNullOrWhiteSpace(current.IdToken))
+            {
+                _logger.LogWarning("Unregister failed: no authenticated user.");
+                return false;
+            }
+
+            var payload = new { idToken = current.IdToken };
+            var response = await _retryPolicy.ExecuteAsync(() =>
+                _http.PostAsJsonAsync($"{BaseUrl}/accounts:delete?key={_apiKey}", payload, ct));
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Unregister failed. Status: {StatusCode}", response.StatusCode);
+                return false;
+            }
+
+            // Clear local state after successful deletion
+            Logout();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error unregistering current user");
             return false;
         }
     }

@@ -1,7 +1,7 @@
 # 🔐 FirebaseAuth.NET
 
 A simple, cross-platform **Firebase Authentication** library for .NET 9 apps (MAUI, Blazor, Console, etc.)  
-Supports **Email + Password** login, registration, password reset, and token persistence with custom secure storage abstraction.
+Supports **Email + Password** login, registration, password reset, token persistence with custom secure storage abstraction, and account deletion (unregister).
 
 ---
 
@@ -22,6 +22,7 @@ NuGet: [https://www.nuget.org/packages/FirebaseAuth.NET](https://www.nuget.org/p
 ✅ Auto Token Refresh  
 ✅ Reusable SecureStorage abstraction  
 ✅ Works in .NET 9 MAUI, Blazor, WPF, API, or Console  
+✅ Account deletion (Unregister)
 
 ---
 
@@ -106,6 +107,12 @@ public partial class LoginPage : ContentPage
         var success = await _auth.SendPasswordResetEmailAsync("test@example.com");
         await DisplayAlert("Reset Password", success ? "Email sent." : "Failed to send.", "OK");
     }
+
+    private async void OnUnregisterClicked(object sender, EventArgs e)
+    {
+        var success = await _auth.UnregisterAsync();
+        await DisplayAlert("Unregister", success ? "Account deleted." : "Failed to delete account.", "OK");
+    }
 }
 ```
 
@@ -120,7 +127,13 @@ _auth.Logout();
 ---
 
 ## 🧩 Advanced
-You can also implement your own `ISecureStorage` (e.g., file, key vault, or mock for testing).
+- Implement your own `ISecureStorage` (e.g., file, key vault, or mock for testing).
+- Control registration availability using options (default allows registration):
+
+```csharp
+var options = new FirebaseAuthOptions { AllowRegistration = false };
+var auth = new FirebaseAuthService(http, logger, storage, "YOUR_FIREBASE_API_KEY", options);
+```
 
 ---
 
@@ -134,7 +147,17 @@ var auth = new FirebaseAuthService(http, logger, storage, "YOUR_FIREBASE_API_KEY
 
 var user = await auth.RegisterAsync("user@example.com", "password123");
 Console.WriteLine($"Registered user: {user?.Email}");
+
+var deleted = await auth.UnregisterAsync();
+Console.WriteLine(deleted ? "Account deleted" : "Delete failed");
 ```
+
+---
+
+## 🌐 Cross-platform notes
+- Uses `ILogger` for retry logging instead of `Console`, suitable for MAUI, Blazor, ASP.NET, WPF, and Console.
+- Storage is abstracted behind `ISecureStorage`; provide a platform-appropriate implementation.
+- Works with `HttpClient` everywhere. In Blazor WebAssembly, ensure CORS is allowed for Google Identity Toolkit endpoints (default is fine), and construct `HttpClient` from DI.
 
 ---
 
