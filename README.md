@@ -1,7 +1,7 @@
 # 🔐 FirebaseAuth.NET
 
 A simple, cross-platform **Firebase Authentication** library for .NET 9 apps (MAUI, Blazor, Console, etc.)  
-Supports **Email + Password** login, registration, password reset, token persistence with custom secure storage abstraction, and account deletion (unregister).
+Supports **Email + Password** login, registration, password reset, token persistence with custom secure storage abstraction, account deletion (unregister), and password change.
 
 ---
 
@@ -19,6 +19,7 @@ NuGet: [https://www.nuget.org/packages/FirebaseAuth.NET](https://www.nuget.org/p
 
 ✅ Email + Password Authentication  
 ✅ Password Reset  
+✅ Change Password  
 ✅ Auto Token Refresh  
 ✅ Reusable SecureStorage abstraction  
 ✅ Works in .NET 9 MAUI, Blazor, WPF, API, or Console  
@@ -108,6 +109,12 @@ public partial class LoginPage : ContentPage
         await DisplayAlert("Reset Password", success ? "Email sent." : "Failed to send.", "OK");
     }
 
+    private async void OnChangePasswordClicked(object sender, EventArgs e)
+    {
+        var success = await _auth.ChangePasswordAsync("NewStrongPassword!234");
+        await DisplayAlert("Change Password", success ? "Password updated." : "Failed to update password.", "OK");
+    }
+
     private async void OnUnregisterClicked(object sender, EventArgs e)
     {
         var success = await _auth.UnregisterAsync();
@@ -115,6 +122,9 @@ public partial class LoginPage : ContentPage
     }
 }
 ```
+
+Notes
+- Changing password requires the user to be signed in. For sensitive operations, Firebase may require a recent login; if you receive an error, call `LoginAsync` again and retry `ChangePasswordAsync`.
 
 ---
 
@@ -147,6 +157,9 @@ var auth = new FirebaseAuthService(http, logger, storage, "YOUR_FIREBASE_API_KEY
 
 var user = await auth.RegisterAsync("user@example.com", "password123");
 Console.WriteLine($"Registered user: {user?.Email}");
+
+var changed = await auth.ChangePasswordAsync("newP@ssw0rd!");
+Console.WriteLine(changed ? "Password changed" : "Change failed");
 
 var deleted = await auth.UnregisterAsync();
 Console.WriteLine(deleted ? "Account deleted" : "Delete failed");

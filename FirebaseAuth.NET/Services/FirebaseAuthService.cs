@@ -194,6 +194,47 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
         }
     }
 
+    public async Task<bool> ChangePasswordAsync(string newPassword, CancellationToken ct = default)
+    {
+        try
+        {
+            var current = await GetCurrentUserAsync(ct);
+            if (current == null || string.IsNullOrWhiteSpace(current.IdToken))
+            {
+                _logger.LogWarning("ChangePassword failed: no authenticated user.");
+                return false;
+            }
+
+            var payload = new { idToken = current.IdToken, password = newPassword, returnSecureToken = true };
+            var response = await _retryPolicy.ExecuteAsync(() =>
+                _http.PostAsJsonAsync($"{BaseUrl}/accounts:update?key={_apiKey}", payload, ct));
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("ChangePassword failed. Status: {StatusCode}. Body: {Body}", response.StatusCode, body);
+                return false;
+            }
+
+            // Update local user with new tokens from response
+            var updated = await response.Content.ReadFromJsonAsync<FirebaseUser>(cancellationToken: ct);
+            if (updated == null)
+            {
+                _logger.LogWarning("ChangePassword failed: invalid response.");
+                return false;
+            }
+
+            updated.ExpiryUtc = DateTime.UtcNow.AddSeconds(int.Parse(updated.ExpiresIn ?? "3600"));
+            await SaveUserAsync(updated);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error changing password");
+            return false;
+        }
+    }
+
     private async Task<FirebaseUser?> RefreshTokenAsync(string refreshToken, CancellationToken ct)
     {
         try
