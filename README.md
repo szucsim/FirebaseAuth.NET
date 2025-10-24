@@ -11,7 +11,7 @@ Supports **Email + Password** login, registration, password reset, token persist
 dotnet add package FirebaseAuth.NET
 ```
 
-NuGet: [https://www.nuget.org/packages/FirebaseAuth.NET](https://www.nuget.org/packages/FirebaseAuth.NET)
+NuGet: https://www.nuget.org/packages/FirebaseAuth.NET
 
 ---
 
@@ -23,7 +23,8 @@ NuGet: [https://www.nuget.org/packages/FirebaseAuth.NET](https://www.nuget.org/p
 ✅ Auto Token Refresh  
 ✅ Reusable SecureStorage abstraction  
 ✅ Works in .NET 9 MAUI, Blazor, WPF, API, or Console  
-✅ Account deletion (Unregister)
+✅ Account deletion (Unregister)  
+✅ Optional typed errors via `FirebaseAuthException` and `AuthErrorReason`
 
 ---
 
@@ -69,7 +70,14 @@ public static class MauiProgram
             var storage = sp.GetRequiredService<ISecureStorage>();
             var http = new HttpClient();
             var apiKey = "YOUR_FIREBASE_API_KEY"; // from Firebase Console
-            return new FirebaseAuthService(http, logger, storage, apiKey);
+            var options = new FirebaseAuthOptions
+            {
+                // Optional: throw typed errors that you can handle in UI
+                ThrowOnError = true,
+                // Optional: disable registration endpoints
+                // AllowRegistration = false
+            };
+            return new FirebaseAuthService(http, logger, storage, apiKey, options);
         });
 
         return builder.Build();
@@ -96,11 +104,30 @@ public partial class LoginPage : ContentPage
 
     private async void OnLoginClicked(object sender, EventArgs e)
     {
-        var user = await _auth.LoginAsync("test@example.com", "password123");
-        if (user != null)
-            await DisplayAlert("Welcome", $"Logged in as {user.Email}", "OK");
-        else
-            await DisplayAlert("Error", "Login failed.", "OK");
+        try
+        {
+            var user = await _auth.LoginAsync("test@example.com", "password123");
+            if (user != null)
+                await DisplayAlert("Welcome", $"Logged in as {user.Email}", "OK");
+            else
+                await DisplayAlert("Error", "Login failed.", "OK");
+        }
+        catch (FirebaseAuthException ex)
+        {
+            // Handle typed errors when ThrowOnError = true
+            switch (ex.Reason)
+            {
+                case AuthErrorReason.InvalidEmailAddress:
+                    await DisplayAlert("Error", "Invalid email address.", "OK");
+                    break;
+                case AuthErrorReason.InvalidPassword:
+                    await DisplayAlert("Error", "Invalid password.", "OK");
+                    break;
+                default:
+                    await DisplayAlert("Error", ex.Message, "OK");
+                    break;
+            }
+        }
     }
 
     private async void OnForgotPasswordClicked(object sender, EventArgs e)
@@ -145,6 +172,12 @@ var options = new FirebaseAuthOptions { AllowRegistration = false };
 var auth = new FirebaseAuthService(http, logger, storage, "YOUR_FIREBASE_API_KEY", options);
 ```
 
+- Enable typed errors in UI-friendly way:
+
+```csharp
+var options = new FirebaseAuthOptions { ThrowOnError = true };
+```
+
 ---
 
 ## 🧪 Example Usage (Console App)
@@ -153,10 +186,21 @@ var http = new HttpClient();
 var storage = new FileSecureStorage(); // your own ISecureStorage implementation
 var logger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<FirebaseAuthService>();
 
-var auth = new FirebaseAuthService(http, logger, storage, "YOUR_FIREBASE_API_KEY");
+var options = new FirebaseAuthOptions { ThrowOnError = true };
+var auth = new FirebaseAuthService(http, logger, storage, "YOUR_FIREBASE_API_KEY", options);
 
-var user = await auth.RegisterAsync("user@example.com", "password123");
-Console.WriteLine($"Registered user: {user?.Email}");
+try
+{
+    var user = await auth.RegisterAsync("user@example.com", "password123");
+    Console.WriteLine($"Registered user: {user?.Email}");
+}
+catch (FirebaseAuthException ex)
+{
+    if (ex.Reason == AuthErrorReason.EmailExists)
+        Console.WriteLine("Email already exists");
+    else
+        Console.WriteLine($"Registration failed: {ex.Message}");
+}
 
 var changed = await auth.ChangePasswordAsync("newP@ssw0rd!");
 Console.WriteLine(changed ? "Password changed" : "Change failed");
@@ -174,12 +218,18 @@ Console.WriteLine(deleted ? "Account deleted" : "Delete failed");
 
 ---
 
+## 📘 API Docs
+- Methods include XML summaries for IntelliSense and documentation tooling.
+- Typed errors: `FirebaseAuthException` with `AuthErrorReason` for granular error handling when `ThrowOnError` is enabled.
+
+---
+
 ## 🧑‍💻 Author
 **Imre Szücs**  
-Licensed under **MIT**  
+Licensed under **MIT**
 
 ---
 
 ## 🌟 Contribute
 Pull requests and improvements are welcome!  
-If you find a bug, please [open an issue](https://github.com/szucsim/FirebaseAuth.NET/issues).
+If you find a bug, please open an issue: https://github.com/szucsim/FirebaseAuth.NET/issues

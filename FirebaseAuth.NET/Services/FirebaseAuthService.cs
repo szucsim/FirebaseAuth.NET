@@ -7,6 +7,10 @@ using FirebaseAuth.NET.Storage;
 
 namespace FirebaseAuth.NET.Services;
 
+/// <summary>
+/// Default implementation of <see cref="IFirebaseAuthService"/> using Firebase Identity Toolkit REST APIs.
+/// Handles login, registration, password reset, account deletion, password change, token refresh and persistence.
+/// </summary>
 public sealed class FirebaseAuthService : IFirebaseAuthService
 {
     private readonly HttpClient _http;
@@ -21,11 +25,16 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
 
     private readonly AsyncRetryPolicy<HttpResponseMessage> _retryPolicy;
 
-    // Backward-compatible constructor (registration allowed by default)
+    /// <summary>
+    /// Creates a new service instance (registration allowed by default).
+    /// </summary>
     public FirebaseAuthService(HttpClient http, ILogger<FirebaseAuthService> logger, ISecureStorage storage, string apiKey)
         : this(http, logger, storage, apiKey, new FirebaseAuthOptions())
     { }
 
+    /// <summary>
+    /// Creates a new service instance with configurable options.
+    /// </summary>
     public FirebaseAuthService(HttpClient http, ILogger<FirebaseAuthService> logger, ISecureStorage storage, string apiKey, FirebaseAuthOptions options)
     {
         _http = http;
@@ -48,6 +57,7 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
             );
     }
 
+    /// <inheritdoc />
     public async Task<FirebaseUser?> LoginAsync(string email, string password, CancellationToken ct = default)
     {
         try
@@ -58,6 +68,7 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
 
             if (!response.IsSuccessStatusCode)
             {
+                await ThrowIfConfiguredAsync(response, "Firebase login failed");
                 _logger.LogWarning("Firebase login failed for {Email}. Status: {StatusCode}", email, response.StatusCode);
                 return null;
             }
@@ -71,11 +82,13 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
         }
         catch (Exception ex)
         {
+            RethrowIfConfigured(ex, "Error logging in user");
             _logger.LogError(ex, "Error logging in user {Email}", email);
             return null;
         }
     }
 
+    /// <inheritdoc />
     public async Task<FirebaseUser?> RegisterAsync(string email, string password, CancellationToken ct = default)
     {
         try
@@ -92,6 +105,7 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
 
             if (!response.IsSuccessStatusCode)
             {
+                await ThrowIfConfiguredAsync(response, "Firebase registration failed");
                 _logger.LogWarning("Firebase registration failed for {Email}", email);
                 return null;
             }
@@ -105,11 +119,13 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
         }
         catch (Exception ex)
         {
+            RethrowIfConfigured(ex, "Error registering user");
             _logger.LogError(ex, "Error registering user {Email}", email);
             return null;
         }
     }
 
+    /// <inheritdoc />
     public async Task<FirebaseUser?> GetCurrentUserAsync(CancellationToken ct = default)
     {
         try
@@ -134,11 +150,13 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
         }
         catch (Exception ex)
         {
+            RethrowIfConfigured(ex, "Error fetching current user");
             _logger.LogError(ex, "Error fetching current user");
             return null;
         }
     }
 
+    /// <inheritdoc />
     public async Task<bool> SendPasswordResetEmailAsync(string email, CancellationToken ct = default)
     {
         try
@@ -149,6 +167,7 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
 
             if (!response.IsSuccessStatusCode)
             {
+                await ThrowIfConfiguredAsync(response, "Password reset failed");
                 _logger.LogWarning("Password reset failed for {Email}", email);
                 return false;
             }
@@ -157,11 +176,13 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
         }
         catch (Exception ex)
         {
+            RethrowIfConfigured(ex, "Error sending password reset email");
             _logger.LogError(ex, "Error sending password reset email for {Email}", email);
             return false;
         }
     }
 
+    /// <inheritdoc />
     public async Task<bool> UnregisterAsync(CancellationToken ct = default)
     {
         try
@@ -179,6 +200,7 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
 
             if (!response.IsSuccessStatusCode)
             {
+                await ThrowIfConfiguredAsync(response, "Unregister failed");
                 _logger.LogWarning("Unregister failed. Status: {StatusCode}", response.StatusCode);
                 return false;
             }
@@ -189,11 +211,13 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
         }
         catch (Exception ex)
         {
+            RethrowIfConfigured(ex, "Error unregistering current user");
             _logger.LogError(ex, "Error unregistering current user");
             return false;
         }
     }
 
+    /// <inheritdoc />
     public async Task<bool> ChangePasswordAsync(string newPassword, CancellationToken ct = default)
     {
         try
@@ -211,6 +235,7 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
 
             if (!response.IsSuccessStatusCode)
             {
+                await ThrowIfConfiguredAsync(response, "ChangePassword failed");
                 var body = await response.Content.ReadAsStringAsync(ct);
                 _logger.LogWarning("ChangePassword failed. Status: {StatusCode}. Body: {Body}", response.StatusCode, body);
                 return false;
@@ -230,6 +255,7 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
         }
         catch (Exception ex)
         {
+            RethrowIfConfigured(ex, "Error changing password");
             _logger.LogError(ex, "Error changing password");
             return false;
         }
@@ -267,11 +293,15 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
         }
         catch (Exception ex)
         {
+            RethrowIfConfigured(ex, "Error refreshing token");
             _logger.LogError(ex, "Error refreshing token");
             return null;
         }
     }
 
+    /// <summary>
+    /// Clears persisted user state and tokens from secure storage.
+    /// </summary>
     public void Logout()
     {
         try
@@ -288,5 +318,72 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
     {
         var json = JsonSerializer.Serialize(user);
         await _storage.SetAsync(StoredUserKey, json);
+    }
+
+    private static AuthErrorReason MapErrorCode(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return AuthErrorReason.Unknown;
+        code = code.Trim();
+        // Normalize common variants
+        if (code.Contains(':')) code = code.Split(':')[0].Trim();
+        if (code.Contains(' ')) code = code.Split(' ')[0].Trim();
+
+        return code switch
+        {
+            "EMAIL_EXISTS" => AuthErrorReason.EmailExists,
+            "INVALID_EMAIL" => AuthErrorReason.InvalidEmailAddress,
+            "WEAK_PASSWORD" => AuthErrorReason.WeakPassword,
+            "EMAIL_NOT_FOUND" => AuthErrorReason.EmailNotFound,
+            "INVALID_PASSWORD" => AuthErrorReason.InvalidPassword,
+            "USER_DISABLED" => AuthErrorReason.UserDisabled,
+            "TOO_MANY_ATTEMPTS_TRY_LATER" => AuthErrorReason.TooManyAttempts,
+            "INVALID_ID_TOKEN" => AuthErrorReason.InvalidIdToken,
+            "TOKEN_EXPIRED" => AuthErrorReason.TokenExpired,
+            "MISSING_PASSWORD" => AuthErrorReason.MissingPassword,
+            "OPERATION_NOT_ALLOWED" => AuthErrorReason.OperationNotAllowed,
+            "CREDENTIAL_TOO_OLD_LOGIN_AGAIN" => AuthErrorReason.RequiresRecentLogin,
+            _ => AuthErrorReason.Unknown
+        };
+    }
+
+    private async Task ThrowIfConfiguredAsync(HttpResponseMessage response, string context)
+    {
+        if (!_options.ThrowOnError) return;
+
+        string? message = null;
+        string? code = null;
+        try
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var errorEl))
+            {
+                if (errorEl.TryGetProperty("message", out var msgEl))
+                {
+                    message = msgEl.GetString();
+                }
+                if (errorEl.TryGetProperty("status", out var statusEl) && string.IsNullOrEmpty(message))
+                {
+                    message = statusEl.GetString();
+                }
+            }
+            code = message;
+        }
+        catch
+        {
+            // ignore parse errors, fall back to status code
+        }
+
+        var reason = MapErrorCode(code);
+        var status = (int)response.StatusCode;
+        var fullMessage = string.IsNullOrWhiteSpace(message) ? context : $"{context}: {message}";
+        throw new FirebaseAuthException(reason, fullMessage, code, status);
+    }
+
+    private void RethrowIfConfigured(Exception ex, string context)
+    {
+        if (!_options.ThrowOnError) return;
+        var reason = ex is HttpRequestException ? AuthErrorReason.NetworkError : AuthErrorReason.Unknown;
+        throw new FirebaseAuthException(reason, $"{context}: {ex.Message}", null, null, ex);
     }
 }
