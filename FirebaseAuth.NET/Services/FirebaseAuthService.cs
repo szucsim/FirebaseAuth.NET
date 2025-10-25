@@ -261,6 +261,55 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
         }
     }
 
+    /// <summary>
+    /// Changes the email of the currently authenticated user.
+    /// </summary>
+    /// <param name="newEmail">The new email address to set.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>True on success; false otherwise.</returns>
+    public async Task<bool> ChangeEmailAsync(string newEmail, CancellationToken ct = default)
+    {
+        try
+        {
+            var current = await GetCurrentUserAsync(ct);
+            if (current == null || string.IsNullOrWhiteSpace(current.IdToken))
+            {
+                _logger.LogWarning("ChangeEmail failed: no authenticated user.");
+                return false;
+            }
+
+            var payload = new { idToken = current.IdToken, email = newEmail, returnSecureToken = true };
+            var response = await _retryPolicy.ExecuteAsync(() =>
+                _http.PostAsJsonAsync($"{BaseUrl}/accounts:update?key={_apiKey}", payload, ct));
+
+            if (!response.IsSuccessStatusCode)
+            {
+                await ThrowIfConfiguredAsync(response, "ChangeEmail failed");
+                var body = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("ChangeEmail failed. Status: {StatusCode}. Body: {Body}", response.StatusCode, body);
+                return false;
+            }
+
+            // Update local user info and tokens from response
+            var updated = await response.Content.ReadFromJsonAsync<FirebaseUser>(cancellationToken: ct);
+            if (updated == null)
+            {
+                _logger.LogWarning("ChangeEmail failed: invalid response.");
+                return false;
+            }
+
+            updated.ExpiryUtc = DateTime.UtcNow.AddSeconds(int.Parse(updated.ExpiresIn ?? "3600"));
+            await SaveUserAsync(updated);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            RethrowIfConfigured(ex, "Error changing email");
+            _logger.LogError(ex, "Error changing email");
+            return false;
+        }
+    }
+
     private async Task<FirebaseUser?> RefreshTokenAsync(string refreshToken, CancellationToken ct)
     {
         try

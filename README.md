@@ -1,7 +1,7 @@
 # 🔐 FirebaseAuth.NET
 
 A simple, cross-platform **Firebase Authentication** library for .NET 9 apps (MAUI, Blazor, Console, etc.)  
-Supports **Email + Password** login, registration, password reset, token persistence with custom secure storage abstraction, account deletion (unregister), and password change.
+Supports **Email + Password** login, registration, password reset, token persistence with custom secure storage abstraction, account deletion (unregister), password change, and email change.
 
 ---
 
@@ -20,6 +20,7 @@ NuGet: https://www.nuget.org/packages/FirebaseAuth.NET
 ✅ Email + Password Authentication  
 ✅ Password Reset  
 ✅ Change Password  
+✅ Change Email  
 ✅ Auto Token Refresh  
 ✅ Reusable SecureStorage abstraction  
 ✅ Works in .NET 9 MAUI, Blazor, WPF, API, or Console  
@@ -142,6 +143,12 @@ public partial class LoginPage : ContentPage
         await DisplayAlert("Change Password", success ? "Password updated." : "Failed to update password.", "OK");
     }
 
+    private async void OnChangeEmailClicked(object sender, EventArgs e)
+    {
+        var success = await _auth.ChangeEmailAsync("new.email@example.com");
+        await DisplayAlert("Change Email", success ? "Email updated." : "Failed to update email.", "OK");
+    }
+
     private async void OnUnregisterClicked(object sender, EventArgs e)
     {
         var success = await _auth.UnregisterAsync();
@@ -151,7 +158,8 @@ public partial class LoginPage : ContentPage
 ```
 
 Notes
-- Changing password requires the user to be signed in. For sensitive operations, Firebase may require a recent login; if you receive an error, call `LoginAsync` again and retry `ChangePasswordAsync`.
+- Changing email requires the user to be signed in and often a recent login.
+- Depending on your Firebase settings, email change may require email verification. Handle  `EMAIL_EXISTS`, `INVALID_EMAIL`, and `CREDENTIAL_TOO_OLD_LOGIN_AGAIN` errors for best UX.
 
 ---
 
@@ -202,8 +210,11 @@ catch (FirebaseAuthException ex)
         Console.WriteLine($"Registration failed: {ex.Message}");
 }
 
-var changed = await auth.ChangePasswordAsync("newP@ssw0rd!");
-Console.WriteLine(changed ? "Password changed" : "Change failed");
+var changedPassword = await auth.ChangePasswordAsync("newP@ssw0rd!");
+Console.WriteLine(changedPassword ? "Password changed" : "Password change failed");
+
+var changedEmail = await auth.ChangeEmailAsync("new@email.com");
+Console.WriteLine(changedEmail ? "Email changed" : "Email change failed");
 
 var deleted = await auth.UnregisterAsync();
 Console.WriteLine(deleted ? "Account deleted" : "Delete failed");
