@@ -369,12 +369,90 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
         await _storage.SetAsync(StoredUserKey, json);
     }
 
+    private async Task ThrowIfConfiguredAsync(HttpResponseMessage response, string context)
+    {
+        if (!_options.ThrowOnError) return;
+
+        string? message = null;
+        string? code = null;
+        try
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var errorEl))
+            {
+                if (errorEl.TryGetProperty("errors", out var errorsEl) && errorsEl.ValueKind == JsonValueKind.Array && errorsEl.GetArrayLength() > 0)
+                {
+                    var first = errorsEl[0];
+                    if (first.ValueKind == JsonValueKind.Object && first.TryGetProperty("message", out var nestedMsg))
+                    {
+                        code = nestedMsg.GetString();
+                    }
+                }
+
+                if (errorEl.TryGetProperty("message", out var msgEl))
+                {
+                    message = msgEl.GetString();
+                    code ??= message;
+                }
+                if (errorEl.TryGetProperty("status", out var statusEl) && string.IsNullOrEmpty(message))
+                {
+                    message = statusEl.GetString();
+                    code ??= message;
+                }
+
+                // Heuristic: messages like "INVALID_ARGUMENT: INVALID_LOGIN_CREDENTIALS ..."
+                if (!string.IsNullOrWhiteSpace(message) && (string.IsNullOrWhiteSpace(code) || code == message))
+                {
+                    var msg = message!;
+                    if (msg.Contains(':'))
+                    {
+                        var parts = msg.Split(':', 2);
+                        var after = parts.Length > 1 ? parts[1].Trim() : parts[0].Trim();
+                        if (!string.IsNullOrWhiteSpace(after))
+                        {
+                            var token = after.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[0];
+                            if (!string.IsNullOrWhiteSpace(token))
+                            {
+                                code = token;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // ignore parse errors
+        }
+
+        var reason = MapErrorCode(code);
+        var status = (int)response.StatusCode;
+        var fullMessage = string.IsNullOrWhiteSpace(message) ? context : $"{context}: {message}";
+        throw new FirebaseAuthException(reason, fullMessage, code, status);
+    }
+
     private static AuthErrorReason MapErrorCode(string? code)
     {
         if (string.IsNullOrWhiteSpace(code)) return AuthErrorReason.Unknown;
         code = code.Trim();
-        // Normalize common variants
-        if (code.Contains(':')) code = code.Split(':')[0].Trim();
+        if (code.Contains(':'))
+        {
+            var parts = code.Split(':', 2);
+            var secondaryFirst = parts.Length > 1 ? parts[1].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[0] : parts[0].Trim();
+            if (!string.IsNullOrWhiteSpace(secondaryFirst))
+            {
+                // If secondary token looks like a Firebase error, prefer it
+                if (secondaryFirst.StartsWith("INVALID_") || secondaryFirst.EndsWith("_PASSWORD") || secondaryFirst.EndsWith("_EMAIL") || secondaryFirst.Contains("CREDENTIAL"))
+                {
+                    code = secondaryFirst;
+                }
+                else
+                {
+                    code = parts[0].Trim();
+                }
+            }
+        }
         if (code.Contains(' ')) code = code.Split(' ')[0].Trim();
 
         return code switch
@@ -394,40 +472,6 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
             "CREDENTIAL_TOO_OLD_LOGIN_AGAIN" => AuthErrorReason.RequiresRecentLogin,
             _ => AuthErrorReason.Unknown
         };
-    }
-
-    private async Task ThrowIfConfiguredAsync(HttpResponseMessage response, string context)
-    {
-        if (!_options.ThrowOnError) return;
-
-        string? message = null;
-        string? code = null;
-        try
-        {
-            var body = await response.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(body);
-            if (doc.RootElement.TryGetProperty("error", out var errorEl))
-            {
-                if (errorEl.TryGetProperty("message", out var msgEl))
-                {
-                    message = msgEl.GetString();
-                }
-                if (errorEl.TryGetProperty("status", out var statusEl) && string.IsNullOrEmpty(message))
-                {
-                    message = statusEl.GetString();
-                }
-            }
-            code = message;
-        }
-        catch
-        {
-            // ignore parse errors, fall back to status code
-        }
-
-        var reason = MapErrorCode(code);
-        var status = (int)response.StatusCode;
-        var fullMessage = string.IsNullOrWhiteSpace(message) ? context : $"{context}: {message}";
-        throw new FirebaseAuthException(reason, fullMessage, code, status);
     }
 
     private void RethrowIfConfigured(Exception ex, string context)
