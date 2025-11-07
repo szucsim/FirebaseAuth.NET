@@ -384,6 +384,7 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
             "WEAK_PASSWORD" => AuthErrorReason.WeakPassword,
             "EMAIL_NOT_FOUND" => AuthErrorReason.EmailNotFound,
             "INVALID_PASSWORD" => AuthErrorReason.InvalidPassword,
+            "INVALID_LOGIN_CREDENTIALS" => AuthErrorReason.InvalidLoginCredentials,
             "USER_DISABLED" => AuthErrorReason.UserDisabled,
             "TOO_MANY_ATTEMPTS_TRY_LATER" => AuthErrorReason.TooManyAttempts,
             "INVALID_ID_TOKEN" => AuthErrorReason.InvalidIdToken,

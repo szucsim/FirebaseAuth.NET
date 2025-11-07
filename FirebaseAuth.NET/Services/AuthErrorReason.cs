@@ -8,6 +8,7 @@ namespace FirebaseAuth.NET.Services
         WeakPassword,
         EmailNotFound,
         InvalidPassword,
+        InvalidLoginCredentials,
         UserDisabled,
         TooManyAttempts,
         InvalidIdToken,
