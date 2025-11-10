@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
 
     <PackageId>FirebaseAuth.NET</PackageId>
-    <Version>1.4.2</Version>
+    <Version>1.4.3</Version>
     <Authors>Imre Szücs</Authors>
     <Company></Company>
     <Description>Cross-platform Firebase Auth service for .NET (MAUI, Blazor, Console, etc.). Supports login, registration, password reset, auto token refresh, and unregister (account deletion).</Description>
@@ -23,9 +23,11 @@
     <!-- Optional: suppress “missing XML comment” warnings for public members -->
     <NoWarn>$(NoWarn);1591</NoWarn>
 
-    <PackageReleaseNotes>1.4.2: Improved parsing of nested Firebase error payloads (e.g. "INVALID_ARGUMENT: INVALID_LOGIN_CREDENTIALS") so LoginAsync now throws AuthErrorReason.InvalidLoginCredentials instead of Unknown.
-1.4.1: Map and throw INVALID_LOGIN_CREDENTIALS during LoginAsync when ThrowOnError is enabled.
-1.4.0: Added ChangeEmailAsync to allow changing the signed-in user's email; updated README; includes XML documentation.</PackageReleaseNotes>
+    <PackageReleaseNotes>
+      1.4.3: Internal validation improvements for error mapping.
+      1.4.2: Improved parsing of nested Firebase error payloads (e.g. "INVALID_ARGUMENT: INVALID_LOGIN_CREDENTIALS") so LoginAsync now throws AuthErrorReason.InvalidLoginCredentials instead of Unknown.
+      1.4.1: Map and throw INVALID_LOGIN_CREDENTIALS during LoginAsync when ThrowOnError is enabled.
+      1.4.0: Added ChangeEmailAsync to allow changing the signed-in user's email; updated README; includes XML documentation.</PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>

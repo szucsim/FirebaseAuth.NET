@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Polly;
 using Polly.Retry;
 using FirebaseAuth.NET.Storage;
+using System.Net;
 
 namespace FirebaseAuth.NET.Services;
 
@@ -43,18 +44,26 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
         _apiKey = apiKey;
         _options = options ?? new FirebaseAuthOptions();
 
-        _retryPolicy = Policy
-            .HandleResult<HttpResponseMessage>(r => !r.IsSuccessStatusCode)
+        _retryPolicy = Policy<HttpResponseMessage>
+            .Handle<HttpRequestException>()
+            .OrResult(r => IsTransientStatus(r.StatusCode))
             .WaitAndRetryAsync(
                 3,
-                attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
+                attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt - 1)), // 1s, 2s, 4s
                 (outcome, delay, attempt, _) =>
-                    _logger.LogDebug(
-                        "Retrying HTTP request (attempt {Attempt}) after {DelaySeconds}s. Status: {StatusCode}",
-                        attempt,
-                        delay.TotalSeconds,
-                        outcome.Result?.StatusCode)
+                {
+                    var status = outcome.Exception != null ? "EX" : outcome.Result?.StatusCode.ToString();
+                    _logger.LogDebug("Retrying transient HTTP request (attempt {Attempt}) after {DelaySeconds}s. Status: {Status}", attempt, delay.TotalSeconds, status);
+                }
             );
+    }
+
+    private static bool IsTransientStatus(HttpStatusCode code)
+    {
+        var i = (int)code;
+        if (code == HttpStatusCode.RequestTimeout) return true; // 408
+        if (code == (HttpStatusCode)429) return true; // Too Many Requests
+        return i >= 500 && i <= 599; // 5xx
     }
 
     /// <inheritdoc />
@@ -79,6 +88,12 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
             user.ExpiryUtc = DateTime.UtcNow.AddSeconds(int.Parse(user.ExpiresIn ?? "3600"));
             await SaveUserAsync(user);
             return user;
+        }
+        catch (FirebaseAuthException ex)
+        {
+            if (_options.ThrowOnError) throw;
+            _logger.LogError(ex, "Firebase login failed for {Email}", email);
+            return null;
         }
         catch (Exception ex)
         {
@@ -117,6 +132,12 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
             await SaveUserAsync(user);
             return user;
         }
+        catch (FirebaseAuthException ex)
+        {
+            if (_options.ThrowOnError) throw;
+            _logger.LogError(ex, "Firebase registration failed for {Email}", email);
+            return null;
+        }
         catch (Exception ex)
         {
             RethrowIfConfigured(ex, "Error registering user");
@@ -148,6 +169,12 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
 
             return user;
         }
+        catch (FirebaseAuthException ex)
+        {
+            if (_options.ThrowOnError) throw;
+            _logger.LogError(ex, "Error fetching current user (auth)");
+            return null;
+        }
         catch (Exception ex)
         {
             RethrowIfConfigured(ex, "Error fetching current user");
@@ -173,6 +200,12 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
             }
 
             return true;
+        }
+        catch (FirebaseAuthException ex)
+        {
+            if (_options.ThrowOnError) throw;
+            _logger.LogError(ex, "Password reset failed for {Email}", email);
+            return false;
         }
         catch (Exception ex)
         {
@@ -208,6 +241,12 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
             // Clear local state after successful deletion
             Logout();
             return true;
+        }
+        catch (FirebaseAuthException ex)
+        {
+            if (_options.ThrowOnError) throw;
+            _logger.LogError(ex, "Unregister failed (auth)");
+            return false;
         }
         catch (Exception ex)
         {
@@ -252,6 +291,12 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
             updated.ExpiryUtc = DateTime.UtcNow.AddSeconds(int.Parse(updated.ExpiresIn ?? "3600"));
             await SaveUserAsync(updated);
             return true;
+        }
+        catch (FirebaseAuthException ex)
+        {
+            if (_options.ThrowOnError) throw;
+            _logger.LogError(ex, "ChangePassword failed (auth)");
+            return false;
         }
         catch (Exception ex)
         {
@@ -302,6 +347,12 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
             await SaveUserAsync(updated);
             return true;
         }
+        catch (FirebaseAuthException ex)
+        {
+            if (_options.ThrowOnError) throw;
+            _logger.LogError(ex, "ChangeEmail failed (auth)");
+            return false;
+        }
         catch (Exception ex)
         {
             RethrowIfConfigured(ex, "Error changing email");
@@ -325,6 +376,7 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
 
             if (!response.IsSuccessStatusCode)
             {
+                await ThrowIfConfiguredAsync(response, "Token refresh failed");
                 _logger.LogWarning("Token refresh failed. Status: {StatusCode}", response.StatusCode);
                 return null;
             }
@@ -339,6 +391,12 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
                 LocalId = root.GetProperty("user_id").GetString() ?? "",
                 ExpiryUtc = DateTime.UtcNow.AddSeconds(int.Parse(root.GetProperty("expires_in").GetString() ?? "3600"))
             };
+        }
+        catch (FirebaseAuthException ex)
+        {
+            if (_options.ThrowOnError) throw;
+            _logger.LogError(ex, "Token refresh failed (auth)");
+            return null;
         }
         catch (Exception ex)
         {
@@ -359,6 +417,12 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
         }
         catch (Exception ex)
         {
+            // Preserve original FirebaseAuthException if thrown from storage implementation
+            if (ex is FirebaseAuthException fae && _options.ThrowOnError) throw;
+            if (ex is not FirebaseAuthException)
+            {
+                RethrowIfConfigured(ex, "Error clearing stored user data");
+            }
             _logger.LogError(ex, "Error clearing stored user data");
         }
     }
@@ -477,6 +541,7 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
     private void RethrowIfConfigured(Exception ex, string context)
     {
         if (!_options.ThrowOnError) return;
+        if (ex is FirebaseAuthException) throw ex;
         var reason = ex is HttpRequestException ? AuthErrorReason.NetworkError : AuthErrorReason.Unknown;
         throw new FirebaseAuthException(reason, $"{context}: {ex.Message}", null, null, ex);
     }
