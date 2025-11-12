@@ -464,25 +464,6 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
                     message = statusEl.GetString();
                     code ??= message;
                 }
-
-                // Heuristic: messages like "INVALID_ARGUMENT: INVALID_LOGIN_CREDENTIALS ..."
-                if (!string.IsNullOrWhiteSpace(message) && (string.IsNullOrWhiteSpace(code) || code == message))
-                {
-                    var msg = message!;
-                    if (msg.Contains(':'))
-                    {
-                        var parts = msg.Split(':', 2);
-                        var after = parts.Length > 1 ? parts[1].Trim() : parts[0].Trim();
-                        if (!string.IsNullOrWhiteSpace(after))
-                        {
-                            var token = after.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[0];
-                            if (!string.IsNullOrWhiteSpace(token))
-                            {
-                                code = token;
-                            }
-                        }
-                    }
-                }
             }
         }
         catch
