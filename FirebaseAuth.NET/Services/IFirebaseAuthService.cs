@@ -70,18 +70,6 @@
         Task<bool> ChangePasswordAsync(string newPassword, CancellationToken ct = default);
 
         /// <summary>
-        /// Changes the email of the currently authenticated user.
-        /// </summary>
-        /// <param name="newEmail">The new email address to set.</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns>True on success; false otherwise.</returns>
-        /// <remarks>
-        /// Requires a valid and recent login depending on Firebase policy. When enabled in Firebase, may require email verification.
-        /// Throws <see cref="FirebaseAuthException"/> when ThrowOnError is enabled.
-        /// </remarks>
-        Task<bool> ChangeEmailAsync(string newEmail, CancellationToken ct = default);
-
-        /// <summary>
         /// Clears persisted user state and tokens from secure storage.
         /// </summary>
         void Logout();

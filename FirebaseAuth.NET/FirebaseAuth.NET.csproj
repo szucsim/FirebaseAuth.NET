@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
 
     <PackageId>FirebaseAuth.NET</PackageId>
-    <Version>1.4.4</Version>
+    <Version>1.5.0</Version>
     <Authors>Imre Szücs</Authors>
     <Company></Company>
     <Description>Cross-platform Firebase Auth service for .NET (MAUI, Blazor, Console, etc.). Supports login, registration, password reset, auto token refresh, and unregister (account deletion).</Description>
@@ -24,6 +24,7 @@
     <NoWarn>$(NoWarn);1591</NoWarn>
 
     <PackageReleaseNotes>
+      1.5.0: Removed ChangeEmailAsync API and feature. Updated docs and tests accordingly.
       1.4.4: Fix to throw correct exceptions.
       1.4.3: Internal validation improvements for error mapping.
       1.4.2: Improved parsing of nested Firebase error payloads (e.g. "INVALID_ARGUMENT: INVALID_LOGIN_CREDENTIALS") so LoginAsync now throws AuthErrorReason.InvalidLoginCredentials instead of Unknown.
