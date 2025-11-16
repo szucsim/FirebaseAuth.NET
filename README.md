@@ -1,7 +1,7 @@
 # 🔐 FirebaseAuth.NET
 
 A simple, cross-platform **Firebase Authentication** library for .NET 9 apps (MAUI, Blazor, Console, etc.)  
-Supports **Email + Password** login, registration, password reset, token persistence with custom secure storage abstraction, account deletion (unregister), and password change.
+Supports **Email + Password** login, registration, password reset, token persistence with custom secure storage abstraction, account deletion (unregister), password change, email change flow, and user profile refresh.
 
 ---
 
@@ -20,6 +20,8 @@ NuGet: https://www.nuget.org/packages/FirebaseAuth.NET
 ✅ Email + Password Authentication  
 ✅ Password Reset  
 ✅ Change Password  
+✅ Start Email Change Flow (verify & change)  
+✅ Refresh User Info (accounts:lookup)  
 ✅ Auto Token Refresh  
 ✅ Reusable SecureStorage abstraction  
 ✅ Works in .NET 9 MAUI, Blazor, WPF, API, or Console  
@@ -136,6 +138,19 @@ public partial class LoginPage : ContentPage
         await DisplayAlert("Reset Password", success ? "Email sent." : "Failed to send.", "OK");
     }
 
+    private async void OnStartEmailChangeClicked(object sender, EventArgs e)
+    {
+        // Sends verification link to new email
+        var started = await _auth.StartEmailChangeAsync("new.email@example.com", continueUrl: "https://myapp/callback", canHandleCodeInApp: true);
+        await DisplayAlert("Email Change", started ? "Verification email sent." : "Failed to start email change.", "OK");
+    }
+
+    private async void OnRefreshUserInfoClicked(object sender, EventArgs e)
+    {
+        var refreshed = await _auth.RefreshUserInfoAsync();
+        await DisplayAlert("User Info", refreshed != null ? $"Email now: {refreshed.Email}" : "Refresh failed", "OK");
+    }
+
     private async void OnChangePasswordClicked(object sender, EventArgs e)
     {
         var success = await _auth.ChangePasswordAsync("NewStrongPassword!234");
@@ -152,6 +167,7 @@ public partial class LoginPage : ContentPage
 
 Notes
 - Changing password requires the user to be signed in and may require a recent login.
+- Email change flow: call `StartEmailChangeAsync(newEmail)` to send a verification link to the new address. After the user clicks the link and Firebase applies the change, the current session's ID token becomes invalid for privileged actions. You should force a fresh login (reauthenticate) or obtain a new ID token, then call `RefreshUserInfoAsync()` to load the updated email.
 
 ---
 
@@ -202,6 +218,12 @@ catch (FirebaseAuthException ex)
         Console.WriteLine($"Registration failed: {ex.Message}");
 }
 
+var startedEmailChange = await auth.StartEmailChangeAsync("new.email@example.com", continueUrl: "https://app/callback", canHandleCodeInApp: true);
+Console.WriteLine(startedEmailChange ? "Verification email sent" : "Failed to send email change verification");
+// After user confirms link, force re-login then:
+var refreshedUser = await auth.RefreshUserInfoAsync();
+Console.WriteLine(refreshedUser != null ? $"Current email: {refreshedUser.Email}" : "Failed to refresh user info");
+
 var changedPassword = await auth.ChangePasswordAsync("newP@ssw0rd!");
 Console.WriteLine(changedPassword ? "Password changed" : "Password change failed");
 
@@ -221,6 +243,7 @@ Console.WriteLine(deleted ? "Account deleted" : "Delete failed");
 ## 📘 API Docs
 - Methods include XML summaries for IntelliSense and documentation tooling.
 - Typed errors: `FirebaseAuthException` with `AuthErrorReason` for granular error handling when `ThrowOnError` is enabled.
+- Email change: `StartEmailChangeAsync(newEmail)` initiates verification; after confirmation the old ID token may be invalid, so reauthenticate and call `RefreshUserInfoAsync()`.
 
 ---
 

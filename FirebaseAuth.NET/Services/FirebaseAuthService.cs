@@ -471,4 +471,115 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
         var reason = ex is HttpRequestException ? AuthErrorReason.NetworkError : AuthErrorReason.Unknown;
         throw new FirebaseAuthException(reason, $"{context}: {ex.Message}", null, null, ex);
     }
+
+    /// <inheritdoc />
+    public async Task<bool> StartEmailChangeAsync(string newEmail, string? continueUrl = null, bool canHandleCodeInApp = false, CancellationToken ct = default)
+    {
+        try
+        {
+            var current = await GetCurrentUserAsync(ct);
+            if (current == null || string.IsNullOrWhiteSpace(current.IdToken))
+            {
+                _logger.LogWarning("StartEmailChange failed: no authenticated user.");
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(current.Email) && string.Equals(current.Email, newEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogInformation("StartEmailChange skipped: new email equals current email.");
+                return true;
+            }
+
+            var payload = new Dictionary<string, object?>
+            {
+                ["requestType"] = "VERIFY_AND_CHANGE_EMAIL",
+                ["idToken"] = current.IdToken,
+                ["newEmail"] = newEmail
+            };
+
+            if (!string.IsNullOrWhiteSpace(continueUrl)) payload["continueUrl"] = continueUrl;
+            if (canHandleCodeInApp) payload["canHandleCodeInApp"] = true;
+
+            var response = await _retryPolicy.ExecuteAsync(() =>
+                _http.PostAsJsonAsync($"{BaseUrl}/accounts:sendOobCode?key={_apiKey}", payload, ct));
+
+            if (!response.IsSuccessStatusCode)
+            {
+                await ThrowIfConfiguredAsync(response, "StartEmailChange failed");
+                _logger.LogWarning("StartEmailChange failed. Status: {StatusCode}", response.StatusCode);
+                return false;
+            }
+
+            return true;
+        }
+        catch (FirebaseAuthException ex)
+        {
+            if (_options.ThrowOnError) throw;
+            _logger.LogError(ex, "StartEmailChange failed (auth)");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            RethrowIfConfigured(ex, "Error starting email change");
+            _logger.LogError(ex, "Error starting email change");
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<FirebaseUser?> RefreshUserInfoAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var current = await GetCurrentUserAsync(ct);
+            if (current == null || string.IsNullOrWhiteSpace(current.IdToken))
+            {
+                _logger.LogWarning("RefreshUserInfo failed: no authenticated user.");
+                return null;
+            }
+
+            var payload = new { idToken = current.IdToken };
+            var response = await _retryPolicy.ExecuteAsync(() =>
+                _http.PostAsJsonAsync($"{BaseUrl}/accounts:lookup?key={_apiKey}", payload, ct));
+
+            if (!response.IsSuccessStatusCode)
+            {
+                await ThrowIfConfiguredAsync(response, "RefreshUserInfo failed");
+                _logger.LogWarning("RefreshUserInfo failed. Status: {StatusCode}", response.StatusCode);
+                return null;
+            }
+
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            var root = doc.RootElement;
+            if (root.TryGetProperty("users", out var usersEl) && usersEl.ValueKind == JsonValueKind.Array && usersEl.GetArrayLength() > 0)
+            {
+                var u = usersEl[0];
+                if (u.TryGetProperty("email", out var emailEl))
+                {
+                    current.Email = emailEl.GetString();
+                }
+                if (u.TryGetProperty("localId", out var idEl))
+                {
+                    current.LocalId = idEl.GetString() ?? current.LocalId;
+                }
+                await SaveUserAsync(current);
+                return current;
+            }
+
+            _logger.LogWarning("RefreshUserInfo failed: missing 'users' in response.");
+            return null;
+        }
+        catch (FirebaseAuthException ex)
+        {
+            if (_options.ThrowOnError) throw;
+            _logger.LogError(ex, "RefreshUserInfo failed (auth)");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            RethrowIfConfigured(ex, "Error refreshing user info");
+            _logger.LogError(ex, "Error refreshing user info");
+            return null;
+        }
+    }
 }

@@ -70,6 +70,22 @@
         Task<bool> ChangePasswordAsync(string newPassword, CancellationToken ct = default);
 
         /// <summary>
+        /// Starts a client-side email change flow by sending a verification email (OOB code) to the new address.
+        /// After the user confirms, call <see cref="RefreshUserInfoAsync"/> to observe the updated email.
+        /// </summary>
+        /// <param name="newEmail">Target email address.</param>
+        /// <param name="continueUrl">Optional redirect URL after confirmation.</param>
+        /// <param name="canHandleCodeInApp">If true, indicates the app can intercept the action code (deep link).</param>
+        /// <param name="ct">Cancellation token.</param>
+        Task<bool> StartEmailChangeAsync(string newEmail, string? continueUrl = null, bool canHandleCodeInApp = false, CancellationToken ct = default);
+
+        /// <summary>
+        /// Refreshes current user profile via accounts:lookup and persists it locally (e.g., updated email).
+        /// </summary>
+        /// <param name="ct">Cancellation token.</param>
+        Task<FirebaseUser?> RefreshUserInfoAsync(CancellationToken ct = default);
+
+        /// <summary>
         /// Clears persisted user state and tokens from secure storage.
         /// </summary>
         void Logout();
