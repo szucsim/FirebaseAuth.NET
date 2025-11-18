@@ -1,6 +1,6 @@
 # 🔐 FirebaseAuth.NET
 
-A simple, cross-platform **Firebase Authentication** library for .NET 9 apps (MAUI, Blazor, Console, etc.)  
+A simple, cross-platform **Firebase Authentication** library for MAUI, Blazor, Console, etc. targeting .NET 8, .NET 9, or .NET 10
 Supports **Email + Password** login, registration, password reset, token persistence with custom secure storage abstraction, account deletion (unregister), password change, email change flow, and user profile refresh.
 
 ---
@@ -24,7 +24,7 @@ NuGet: https://www.nuget.org/packages/FirebaseAuth.NET
 ✅ Refresh User Info (accounts:lookup)  
 ✅ Auto Token Refresh  
 ✅ Reusable SecureStorage abstraction  
-✅ Works in .NET 9 MAUI, Blazor, WPF, API, or Console  
+✅ Works in MAUI, Blazor, WPF, ASP.NET, or Console apps targeting .NET 8, .NET 9, or .NET 10  
 ✅ Account deletion (Unregister)  
 ✅ Optional typed errors via `FirebaseAuthException` and `AuthErrorReason`
 
