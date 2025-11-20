@@ -16,6 +16,8 @@ namespace FirebaseAuth.NET.Services
         MissingPassword,
         OperationNotAllowed,
         RequiresRecentLogin,
-        NetworkError
+        NetworkError,
+        MissingRefreshToken,
+        InvalidRefreshToken
     }
 }

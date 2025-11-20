@@ -460,6 +460,8 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
             "MISSING_PASSWORD" => AuthErrorReason.MissingPassword,
             "OPERATION_NOT_ALLOWED" => AuthErrorReason.OperationNotAllowed,
             "CREDENTIAL_TOO_OLD_LOGIN_AGAIN" => AuthErrorReason.RequiresRecentLogin,
+            "MISSING_REFRESH_TOKEN" => AuthErrorReason.MissingRefreshToken,
+            "INVALID_REFRESH_TOKEN" => AuthErrorReason.InvalidRefreshToken,
             _ => AuthErrorReason.Unknown
         };
     }

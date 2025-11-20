@@ -1,7 +1,9 @@
 # 🔐 FirebaseAuth.NET
 
-A simple, cross-platform **Firebase Authentication** library for MAUI, Blazor, Console, etc. targeting .NET 8, .NET 9, or .NET 10
-Supports **Email + Password** login, registration, password reset, token persistence with custom secure storage abstraction, account deletion (unregister), password change, email change flow, and user profile refresh.
+A simple, cross-platform **Firebase Authentication** library for MAUI, Blazor, Console, etc. targeting .NET 8, .NET 9, or .NET 10.
+Supports **Email + Password** login, registration, password reset, token persistence with secure storage abstraction, account deletion (unregister), password change, email change flow, user profile refresh, and granular error mapping.
+
+Current version: 1.7.1
 
 ---
 
@@ -18,6 +20,7 @@ NuGet: https://www.nuget.org/packages/FirebaseAuth.NET
 ## 🧱 Features
 
 ✅ Email + Password Authentication  
+✅ Registration (optional disable)  
 ✅ Password Reset  
 ✅ Change Password  
 ✅ Start Email Change Flow (verify & change)  
@@ -26,7 +29,25 @@ NuGet: https://www.nuget.org/packages/FirebaseAuth.NET
 ✅ Reusable SecureStorage abstraction  
 ✅ Works in MAUI, Blazor, WPF, ASP.NET, or Console apps targeting .NET 8, .NET 9, or .NET 10  
 ✅ Account deletion (Unregister)  
-✅ Optional typed errors via `FirebaseAuthException` and `AuthErrorReason`
+✅ Typed errors via `FirebaseAuthException` and `AuthErrorReason`  
+✅ Robust Firebase error payload parsing (nested message formats)
+
+---
+
+## 🔎 Error Reasons Overview
+`AuthErrorReason` includes (non-exhaustive):
+- `InvalidEmailAddress`, `EmailExists`, `EmailNotFound`
+- `InvalidPassword`, `WeakPassword`, `InvalidLoginCredentials`
+- `UserDisabled`, `TooManyAttempts`
+- `InvalidIdToken`, `TokenExpired`
+- `MissingRefreshToken`, `InvalidRefreshToken`
+- `RequiresRecentLogin`, `OperationNotAllowed`
+
+### TokenExpired vs InvalidIdToken vs Refresh Token Errors
+- `TokenExpired`: ID token lifetime elapsed; library attempts refresh automatically using stored refresh token. On success you transparently continue.
+- `InvalidIdToken`: Provided ID token rejected (revoked / changed context, e.g. after email change). Force re-login.
+- `MissingRefreshToken`: Refresh attempted without token (corrupt / cleared state). Force logout + re-login.
+- `InvalidRefreshToken`: Token revoked / malformed / deleted user. Force logout + re-login.
 
 ---
 
@@ -64,7 +85,6 @@ public static class MauiProgram
     {
         var builder = MauiApp.CreateBuilder();
 
-        // Register Firebase Auth
         builder.Services.AddSingleton<ISecureStorage, MauiSecureStorage>();
         builder.Services.AddSingleton<IFirebaseAuthService>(sp =>
         {
@@ -74,10 +94,8 @@ public static class MauiProgram
             var apiKey = "YOUR_FIREBASE_API_KEY"; // from Firebase Console
             var options = new FirebaseAuthOptions
             {
-                // Optional: throw typed errors that you can handle in UI
                 ThrowOnError = true,
-                // Optional: disable registration endpoints
-                // AllowRegistration = false
+                // AllowRegistration = false // optional
             };
             return new FirebaseAuthService(http, logger, storage, apiKey, options);
         });
@@ -89,170 +107,200 @@ public static class MauiProgram
 
 ---
 
-### 3️⃣ Use It Anywhere
+### 3️⃣ Use It Anywhere (Example Page)
 
 ```csharp
-using FirebaseAuth.NET.Services;
-
-public partial class LoginPage : ContentPage
+try
 {
-    private readonly IFirebaseAuthService _auth;
-
-    public LoginPage(IFirebaseAuthService auth)
+    var user = await _auth.LoginAsync("test@example.com", "password123");
+    if (user != null)
+        await DisplayAlert("Welcome", $"Logged in as {user.Email}", "OK");
+    else
+        await DisplayAlert("Error", "Login failed.", "OK");
+}
+catch (FirebaseAuthException ex)
+{
+    switch (ex.Reason)
     {
-        InitializeComponent();
-        _auth = auth;
-    }
-
-    private async void OnLoginClicked(object sender, EventArgs e)
-    {
-        try
-        {
-            var user = await _auth.LoginAsync("test@example.com", "password123");
-            if (user != null)
-                await DisplayAlert("Welcome", $"Logged in as {user.Email}", "OK");
-            else
-                await DisplayAlert("Error", "Login failed.", "OK");
-        }
-        catch (FirebaseAuthException ex)
-        {
-            // Handle typed errors when ThrowOnError = true
-            switch (ex.Reason)
-            {
-                case AuthErrorReason.InvalidEmailAddress:
-                    await DisplayAlert("Error", "Invalid email address.", "OK");
-                    break;
-                case AuthErrorReason.InvalidPassword:
-                    await DisplayAlert("Error", "Invalid password.", "OK");
-                    break;
-                default:
-                    await DisplayAlert("Error", ex.Message, "OK");
-                    break;
-            }
-        }
-    }
-
-    private async void OnForgotPasswordClicked(object sender, EventArgs e)
-    {
-        var success = await _auth.SendPasswordResetEmailAsync("test@example.com");
-        await DisplayAlert("Reset Password", success ? "Email sent." : "Failed to send.", "OK");
-    }
-
-    private async void OnStartEmailChangeClicked(object sender, EventArgs e)
-    {
-        // Sends verification link to new email
-        var started = await _auth.StartEmailChangeAsync("new.email@example.com", continueUrl: "https://myapp/callback", canHandleCodeInApp: true);
-        await DisplayAlert("Email Change", started ? "Verification email sent." : "Failed to start email change.", "OK");
-    }
-
-    private async void OnRefreshUserInfoClicked(object sender, EventArgs e)
-    {
-        var refreshed = await _auth.RefreshUserInfoAsync();
-        await DisplayAlert("User Info", refreshed != null ? $"Email now: {refreshed.Email}" : "Refresh failed", "OK");
-    }
-
-    private async void OnChangePasswordClicked(object sender, EventArgs e)
-    {
-        var success = await _auth.ChangePasswordAsync("NewStrongPassword!234");
-        await DisplayAlert("Change Password", success ? "Password updated." : "Failed to update password.", "OK");
-    }
-
-    private async void OnUnregisterClicked(object sender, EventArgs e)
-    {
-        var success = await _auth.UnregisterAsync();
-        await DisplayAlert("Unregister", success ? "Account deleted." : "Failed to delete account.", "OK");
+        case AuthErrorReason.InvalidEmailAddress:
+            await DisplayAlert("Error", "Invalid email address.", "OK");
+            break;
+        case AuthErrorReason.InvalidPassword:
+        case AuthErrorReason.InvalidLoginCredentials:
+            await DisplayAlert("Error", "Invalid credentials.", "OK");
+            break;
+        case AuthErrorReason.MissingRefreshToken:
+        case AuthErrorReason.InvalidRefreshToken:
+            _auth.Logout();
+            await DisplayAlert("Session", "Session expired. Please log in again.", "OK");
+            break;
+        default:
+            await DisplayAlert("Error", ex.Message, "OK");
+            break;
     }
 }
 ```
 
 Notes
-- Changing password requires the user to be signed in and may require a recent login.
-- Email change flow: call `StartEmailChangeAsync(newEmail)` to send a verification link to the new address. After the user clicks the link and Firebase applies the change, the current session's ID token becomes invalid for privileged actions. You should force a fresh login (reauthenticate) or obtain a new ID token, then call `RefreshUserInfoAsync()` to load the updated email.
+- Changing password requires signed-in user and may need recent login.
+- Email change flow invalidates old tokens; re-login then call `RefreshUserInfoAsync()`.
+
+---
+
+### Email Change Flow
+1. Call `StartEmailChangeAsync(newEmail)` to send verification link.
+2. User confirms link ⇒ Firebase updates email; old ID token may fail.
+3. Handle `InvalidIdToken`, `MissingRefreshToken`, `InvalidRefreshToken` by forcing re-login.
+4. Call `RefreshUserInfoAsync()` to obtain updated email.
+
+---
+
+### Refresh Token Failure Handling
+```csharp
+FirebaseUser? current = null;
+try
+{
+    current = await _auth.GetCurrentUserAsync();
+}
+catch (FirebaseAuthException ex) when (
+    ex.Reason == AuthErrorReason.TokenExpired ||
+    ex.Reason == AuthErrorReason.InvalidIdToken ||
+    ex.Reason == AuthErrorReason.InvalidRefreshToken ||
+    ex.Reason == AuthErrorReason.MissingRefreshToken)
+{
+    _auth.Logout();
+}
+```
+If refresh fails (missing/invalid) require manual login.
 
 ---
 
 ### 4️⃣ Logout Example
-
 ```csharp
 _auth.Logout();
 ```
 
 ---
 
-## 🧩 Advanced
-- Implement your own `ISecureStorage` (e.g., file, key vault, or mock for testing).
-- Control registration availability using options (default allows registration):
-
+## 🧪 Full Console App Example
 ```csharp
-var options = new FirebaseAuthOptions { AllowRegistration = false };
-var auth = new FirebaseAuthService(http, logger, storage, "YOUR_FIREBASE_API_KEY", options);
-```
+using FirebaseAuth.NET.Services;
+using FirebaseAuth.NET.Storage;
+using Microsoft.Extensions.Logging;
 
-- Enable typed errors in UI-friendly way:
+// Minimal secure storage implementation (file-based) for demo
+public class FileSecureStorage : ISecureStorage
+{
+    private readonly string _dir = Path.Combine(AppContext.BaseDirectory, "authstore");
+    public FileSecureStorage() => Directory.CreateDirectory(_dir);
+    public Task SetAsync(string key, string value)
+    {
+        File.WriteAllText(Path.Combine(_dir, key), value);
+        return Task.CompletedTask;
+    }
+    public Task<string?> GetAsync(string key)
+    {
+        var path = Path.Combine(_dir, key);
+        return Task.FromResult(File.Exists(path) ? File.ReadAllText(path) : null);
+    }
+    public void Remove(string key)
+    {
+        var path = Path.Combine(_dir, key);
+        if (File.Exists(path)) File.Delete(path);
+    }
+}
 
-```csharp
-var options = new FirebaseAuthOptions { ThrowOnError = true };
-```
-
----
-
-## 🧪 Example Usage (Console App)
-```csharp
+var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+var logger = loggerFactory.CreateLogger<FirebaseAuthService>();
 var http = new HttpClient();
-var storage = new FileSecureStorage(); // your own ISecureStorage implementation
-var logger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<FirebaseAuthService>();
-
+var storage = new FileSecureStorage();
 var options = new FirebaseAuthOptions { ThrowOnError = true };
 var auth = new FirebaseAuthService(http, logger, storage, "YOUR_FIREBASE_API_KEY", options);
 
 try
 {
-    var user = await auth.RegisterAsync("user@example.com", "password123");
-    Console.WriteLine($"Registered user: {user?.Email}");
+    // Register (if enabled)
+    var registered = await auth.RegisterAsync("user@example.com", "StrongP@ssw0rd!");
+    Console.WriteLine($"Registered: {registered?.Email}");
 }
 catch (FirebaseAuthException ex)
 {
-    if (ex.Reason == AuthErrorReason.EmailExists)
-        Console.WriteLine("Email already exists");
-    else
-        Console.WriteLine($"Registration failed: {ex.Message}");
+    Console.WriteLine($"Registration failed ({ex.Reason}): {ex.Message}");
 }
 
-var startedEmailChange = await auth.StartEmailChangeAsync("new.email@example.com", continueUrl: "https://app/callback", canHandleCodeInApp: true);
-Console.WriteLine(startedEmailChange ? "Verification email sent" : "Failed to send email change verification");
-// After user confirms link, force re-login then:
-var refreshedUser = await auth.RefreshUserInfoAsync();
-Console.WriteLine(refreshedUser != null ? $"Current email: {refreshedUser.Email}" : "Failed to refresh user info");
+// Login
+FirebaseUser? user = null;
+try
+{
+    user = await auth.LoginAsync("user@example.com", "StrongP@ssw0rd!");
+    Console.WriteLine($"Logged in: {user?.Email}");
+}
+catch (FirebaseAuthException ex)
+{
+    Console.WriteLine($"Login failed ({ex.Reason}): {ex.Message}");
+}
 
-var changedPassword = await auth.ChangePasswordAsync("newP@ssw0rd!");
-Console.WriteLine(changedPassword ? "Password changed" : "Password change failed");
+// Start email change
+var started = await auth.StartEmailChangeAsync("new.email@example.com", canHandleCodeInApp: true);
+Console.WriteLine(started ? "Email change verification sent." : "Failed to send email change link.");
+Console.WriteLine("(Simulate user clicking verification link in mailbox...)\n");
 
+// Pretend some time passes & tokens may be invalid now
+await Task.Delay(TimeSpan.FromSeconds(2));
+
+try
+{
+    var refreshed = await auth.RefreshUserInfoAsync();
+    Console.WriteLine(refreshed != null ? $"Refreshed email: {refreshed.Email}" : "Refresh failed");
+}
+catch (FirebaseAuthException ex) when (
+    ex.Reason == AuthErrorReason.InvalidIdToken ||
+    ex.Reason == AuthErrorReason.InvalidRefreshToken ||
+    ex.Reason == AuthErrorReason.MissingRefreshToken)
+{
+    Console.WriteLine($"Session invalid ({ex.Reason}). Re-login required.");
+    auth.Logout();
+    user = await auth.LoginAsync("new.email@example.com", "StrongP@ssw0rd!");
+    Console.WriteLine($"Re-logged in: {user?.Email}");
+    var updated = await auth.RefreshUserInfoAsync();
+    Console.WriteLine(updated != null ? $"Updated email after reauth: {updated.Email}" : "Refresh user info failed");
+}
+
+// Change password
+var changedPwd = await auth.ChangePasswordAsync("An0therStr0ngP@ss!");
+Console.WriteLine(changedPwd ? "Password changed." : "Password change failed.");
+
+// Unregister
 var deleted = await auth.UnregisterAsync();
-Console.WriteLine(deleted ? "Account deleted" : "Delete failed");
+Console.WriteLine(deleted ? "Account deleted." : "Account deletion failed.");
 ```
 
 ---
 
-## 🌐 Cross-platform notes
-- Uses `ILogger` for retry logging instead of `Console`, suitable for MAUI, Blazor, ASP.NET, WPF, and Console.
-- Storage is abstracted behind `ISecureStorage`; provide a platform-appropriate implementation.
-- Works with `HttpClient` everywhere. In Blazor WebAssembly, ensure CORS is allowed for Google Identity Toolkit endpoints (default is fine), and construct `HttpClient` from DI.
+## 🧩 Advanced
+- Provide custom `ISecureStorage` (KeyChain/Keystore, DPAPI, file, memory for tests).
+- Disable registration: `new FirebaseAuthOptions { AllowRegistration = false }`.
+- Fine-tune error strategy: `ThrowOnError = true` to receive typed exceptions instead of null/false.
+- Wrap service behind your own auth facade for app-specific logic.
 
 ---
 
-## 📘 API Docs
-- Methods include XML summaries for IntelliSense and documentation tooling.
-- Typed errors: `FirebaseAuthException` with `AuthErrorReason` for granular error handling when `ThrowOnError` is enabled.
-- Email change: `StartEmailChangeAsync(newEmail)` initiates verification; after confirmation the old ID token may be invalid, so reauthenticate and call `RefreshUserInfoAsync()`.
+## 🌐 Cross-platform notes
+- Uses `ILogger` and Polly for transient retry (timeouts, 5xx, 429).
+- No platform-specific code in core library (pure .NET).
+- Works in Blazor WASM (Google endpoints support CORS).
+
+---
+
+## 📘 API Surface
+Key methods: `LoginAsync`, `RegisterAsync`, `GetCurrentUserAsync`, `SendPasswordResetEmailAsync`, `StartEmailChangeAsync`, `RefreshUserInfoAsync`, `ChangePasswordAsync`, `UnregisterAsync`, `Logout`.
 
 ---
 
 ## 🧑‍💻 Author
-**Imre Szücs**  
-Licensed under **MIT**
+**Imre Szücs** – MIT License
 
 ---
 
 ## 🌟 Contribute
-Pull requests and improvements are welcome!  
-If you find a bug, please open an issue: https://github.com/szucsim/FirebaseAuth.NET/issues
+Issues & PRs welcome: https://github.com/szucsim/FirebaseAuth.NET/issues
