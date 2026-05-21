@@ -3,7 +3,7 @@
 A simple, cross-platform **Firebase Authentication** library for MAUI, Blazor, Console, etc. targeting .NET 8, .NET 9, or .NET 10.
 Supports **Email + Password** login, registration, password reset, token persistence with secure storage abstraction, account deletion (unregister), password change, email change flow, user profile refresh, and granular error mapping.
 
-Current version: 1.7.1
+Current version: 1.8.0
 
 ---
 
@@ -20,7 +20,7 @@ NuGet: https://www.nuget.org/packages/FirebaseAuth.NET
 ## 🧱 Features
 
 ✅ Email + Password Authentication  
-✅ Registration (optional disable)  
+✅ Registration (optional disable, sends verification email immediately on success)  
 ✅ Password Reset  
 ✅ Change Password  
 ✅ Start Email Change Flow (verify & change)  

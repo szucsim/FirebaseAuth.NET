@@ -87,6 +87,7 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
 
             user.ExpiryUtc = DateTime.UtcNow.AddSeconds(int.Parse(user.ExpiresIn ?? "3600"));
             await SaveUserAsync(user);
+
             return user;
         }
         catch (FirebaseAuthException ex)
@@ -130,6 +131,16 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
 
             user.ExpiryUtc = DateTime.UtcNow.AddSeconds(int.Parse(user.ExpiresIn ?? "3600"));
             await SaveUserAsync(user);
+
+            if (!string.IsNullOrWhiteSpace(user.IdToken))
+            {
+                var verificationSent = await SendEmailVerificationAsync(user.IdToken, ct);
+                if (!verificationSent)
+                {
+                    _logger.LogWarning("Registration succeeded for {Email}, but sending verification email failed.", email);
+                }
+            }
+
             return user;
         }
         catch (FirebaseAuthException ex)
@@ -211,6 +222,35 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
         {
             RethrowIfConfigured(ex, "Error sending password reset email");
             _logger.LogError(ex, "Error sending password reset email for {Email}", email);
+            return false;
+        }
+    }
+
+    private async Task<bool> SendEmailVerificationAsync(string idToken, CancellationToken ct)
+    {
+        try
+        {
+            var payload = new { requestType = "VERIFY_EMAIL", idToken };
+            var response = await _retryPolicy.ExecuteAsync(() =>
+                _http.PostAsJsonAsync($"{BaseUrl}/accounts:sendOobCode?key={_apiKey}", payload, ct));
+
+            if (!response.IsSuccessStatusCode)
+            {
+                await ThrowIfConfiguredAsync(response, "Send email verification failed");
+                _logger.LogWarning("SendEmailVerification failed. Status: {StatusCode}", response.StatusCode);
+                return false;
+            }
+
+            return true;
+        }
+        catch (FirebaseAuthException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            RethrowIfConfigured(ex, "Error sending verification email");
+            _logger.LogError(ex, "Error sending verification email");
             return false;
         }
     }
