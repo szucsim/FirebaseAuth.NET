@@ -3,7 +3,7 @@
 A simple, cross-platform **Firebase Authentication** library for MAUI, Blazor, Console, etc. targeting .NET 8, .NET 9, or .NET 10.
 Supports **Email + Password** login, registration, password reset, token persistence with secure storage abstraction, account deletion (unregister), password change, email change flow, user profile refresh, and granular error mapping.
 
-Current version: 1.8.0
+Current version: 1.9.0
 
 ---
 
@@ -21,6 +21,7 @@ NuGet: https://www.nuget.org/packages/FirebaseAuth.NET
 
 ✅ Email + Password Authentication  
 ✅ Registration (optional disable, sends verification email immediately on success)  
+✅ Resend Verification Email for existing unverified users  
 ✅ Password Reset  
 ✅ Change Password  
 ✅ Start Email Change Flow (verify & change)  
@@ -144,6 +145,15 @@ catch (FirebaseAuthException ex)
 Notes
 - Changing password requires signed-in user and may need recent login.
 - Email change flow invalidates old tokens; re-login then call `RefreshUserInfoAsync()`.
+- For legacy users created before verification-on-register, call `ResendEmailVerificationAsync()`.
+
+### Resend Email Verification (Legacy Unverified Users)
+```csharp
+var resent = await _auth.ResendEmailVerificationAsync();
+Console.WriteLine(resent
+    ? "Verification email sent (or email is already verified)."
+    : "Failed to resend verification email.");
+```
 
 ---
 

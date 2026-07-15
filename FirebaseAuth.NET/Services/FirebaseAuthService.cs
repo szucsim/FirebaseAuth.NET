@@ -226,6 +226,47 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
         }
     }
 
+    /// <inheritdoc />
+    public async Task<bool> ResendEmailVerificationAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var current = await GetCurrentUserAsync(ct);
+            if (current == null || string.IsNullOrWhiteSpace(current.IdToken))
+            {
+                _logger.LogWarning("ResendEmailVerification failed: no authenticated user.");
+                return false;
+            }
+
+            var (exists, emailVerified) = await GetEmailVerificationStatusAsync(current.IdToken, ct);
+            if (!exists)
+            {
+                _logger.LogWarning("ResendEmailVerification failed: unable to read user status from Firebase.");
+                return false;
+            }
+
+            if (emailVerified)
+            {
+                _logger.LogInformation("ResendEmailVerification skipped: email is already verified.");
+                return true;
+            }
+
+            return await SendEmailVerificationAsync(current.IdToken, ct);
+        }
+        catch (FirebaseAuthException ex)
+        {
+            if (_options.ThrowOnError) throw;
+            _logger.LogError(ex, "ResendEmailVerification failed (auth)");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            RethrowIfConfigured(ex, "Error resending verification email");
+            _logger.LogError(ex, "Error resending verification email");
+            return false;
+        }
+    }
+
     private async Task<bool> SendEmailVerificationAsync(string idToken, CancellationToken ct)
     {
         try
@@ -253,6 +294,31 @@ public sealed class FirebaseAuthService : IFirebaseAuthService
             _logger.LogError(ex, "Error sending verification email");
             return false;
         }
+    }
+
+    private async Task<(bool Exists, bool EmailVerified)> GetEmailVerificationStatusAsync(string idToken, CancellationToken ct)
+    {
+        var payload = new { idToken };
+        var response = await _retryPolicy.ExecuteAsync(() =>
+            _http.PostAsJsonAsync($"{BaseUrl}/accounts:lookup?key={_apiKey}", payload, ct));
+
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowIfConfiguredAsync(response, "Read email verification status failed");
+            _logger.LogWarning("Read email verification status failed. Status: {StatusCode}", response.StatusCode);
+            return (false, false);
+        }
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("users", out var usersEl) || usersEl.ValueKind != JsonValueKind.Array || usersEl.GetArrayLength() == 0)
+        {
+            return (false, false);
+        }
+
+        var userEl = usersEl[0];
+        var verified = userEl.TryGetProperty("emailVerified", out var verifiedEl) && verifiedEl.ValueKind == JsonValueKind.True;
+        return (true, verified);
     }
 
     /// <inheritdoc />

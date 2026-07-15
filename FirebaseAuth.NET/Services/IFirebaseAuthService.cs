@@ -49,6 +49,15 @@
         Task<bool> SendPasswordResetEmailAsync(string email, CancellationToken ct = default);
 
         /// <summary>
+        /// Resends email verification to the currently authenticated user when the email is not verified yet.
+        /// If the email is already verified, no email is sent and the method returns true.
+        /// </summary>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>True when already verified or when resend succeeded; otherwise false.</returns>
+        /// <remarks>Requires an authenticated user. When ThrowOnError is enabled, throws <see cref="FirebaseAuthException"/> on error.</remarks>
+        Task<bool> ResendEmailVerificationAsync(CancellationToken ct = default);
+
+        /// <summary>
         /// Deletes the currently authenticated account.
         /// </summary>
         /// <param name="ct">Cancellation token.</param>
